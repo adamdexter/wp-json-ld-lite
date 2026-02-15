@@ -54,4 +54,4 @@ Outputs a `<script type="application/ld+json">` block in `wp_head` with context-
 
 ## Version
 
-Current version: 1.1.1
+Current version: 1.1.2

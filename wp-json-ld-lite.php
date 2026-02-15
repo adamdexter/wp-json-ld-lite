@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.1.1
+ * Version:     1.1.2
  * Author:      Adam Dexter
  * Author URI:  https://www.thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.1.1' );
+define( 'WPJSONLD_VERSION', '1.1.2' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /* ==========================================================================
@@ -725,7 +725,7 @@ function wpjsonld_output_jsonld() {
 function wpjsonld_build_organization( $opts ) {
 	$org = array(
 		'@type' => 'Organization',
-		'@id'   => '#org',
+		'@id'   => '#wpjsonld-org',
 	);
 
 	if ( ! empty( $opts['org_name'] ) ) {
@@ -740,7 +740,7 @@ function wpjsonld_build_organization( $opts ) {
 		$org['sameAs'] = $sameas;
 	}
 
-	$org['founder'] = array( '@id' => '#person' );
+	$org['founder'] = array( '@id' => '#wpjsonld-person' );
 
 	if ( ! empty( $opts['org_founding_date'] ) ) {
 		$org['foundingDate'] = $opts['org_founding_date'];
@@ -767,7 +767,7 @@ function wpjsonld_build_organization( $opts ) {
 function wpjsonld_build_person( $opts ) {
 	$person = array(
 		'@type' => 'Person',
-		'@id'   => '#person',
+		'@id'   => '#wpjsonld-person',
 	);
 
 	if ( ! empty( $opts['person_name'] ) ) {
@@ -803,7 +803,7 @@ function wpjsonld_build_person( $opts ) {
 		$person['alumniOf'] = $alumni;
 	}
 
-	$person['worksFor'] = array( '@id' => '#org' );
+	$person['worksFor'] = array( '@id' => '#wpjsonld-org' );
 
 	$knows = wpjsonld_parse_line_list( $opts['person_knows_about'] ?? '' );
 	if ( $knows ) {
@@ -953,11 +953,11 @@ function wpjsonld_build_review( $post ) {
 		}
 		$review['itemReviewed'] = $item_reviewed;
 	} else {
-		$review['itemReviewed'] = array( '@id' => '#org' );
+		$review['itemReviewed'] = array( '@id' => '#wpjsonld-org' );
 	}
 
 	// publisher.
-	$review['publisher'] = array( '@id' => '#org' );
+	$review['publisher'] = array( '@id' => '#wpjsonld-org' );
 
 	return $review;
 }
