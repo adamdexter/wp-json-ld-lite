@@ -22,7 +22,7 @@ This plugin is designed to work with [Strong Testimonials](https://wordpress.org
 
 All settings are stored as a single option (`wpjsonld_settings`). Four sections:
 
-- **Page Targeting** — Choose where JSON-LD is output: homepage only (default), all pages, or specific page IDs
+- **Output Options** — Context-aware output is automatic; optional checkbox to enable Organization/Person/Services on all pages
 - **Organization** — Name, URL, description, sameAs URLs, founding date, contact info
 - **Person** — Name, description, job title, image, sameAs URLs, alumniOf, knowsAbout
 - **Services** — JSON textarea for an array of Service objects (invalid JSON falls back to `[]` on save)
@@ -41,13 +41,17 @@ When editing a testimonial, 5 additional fields appear under "JSON-LD Enrichment
 
 ## JSON-LD Output
 
-Outputs a single `<script type="application/ld+json">` block in `wp_head` containing a `@graph` with:
+Outputs a `<script type="application/ld+json">` block in `wp_head` with context-aware content:
 
-- **Organization** (`@id: #org`) with aggregateRating computed from all testimonials
-- **Person** (`@id: #person`) linked to the Organization via `worksFor`
-- **Review[]** with author details, reviewRating, datePublished, inLanguage, publisher
-- **Service[]** from the settings JSON textarea
+| Page Type | Org | Person | Reviews | Services | AggregateRating |
+|-----------|-----|--------|---------|----------|-----------------|
+| Homepage | Yes | Yes | All | Yes | Yes |
+| Testimonials archive | Yes | Yes | All | No | Yes |
+| Single testimonial | Yes | No | That one | No | No |
+| Other pages/posts* | Yes | Yes | No | Yes | No |
+
+*Only when "Site-wide Identity Data" is enabled in settings. Otherwise, only the homepage and testimonial pages get JSON-LD.
 
 ## Version
 
-Current version: 1.0.0
+Current version: 1.1.0

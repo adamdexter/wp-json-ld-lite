@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.0.0
+ * Version:     1.1.0
  * Author:      Adam Dexter
  * Author URI:  https://www.thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.0.0' );
+define( 'WPJSONLD_VERSION', '1.1.0' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /* ==========================================================================
@@ -133,8 +133,7 @@ function wpjsonld_add_settings_page() {
 
 function wpjsonld_get_defaults() {
 	return array(
-		'target_mode'       => 'homepage',
-		'target_page_ids'   => '',
+		'sitewide_identity' => '',
 		'org_name'          => '',
 		'org_url'           => '',
 		'org_description'   => '',
@@ -162,10 +161,9 @@ function wpjsonld_register_settings() {
 		'default'           => wpjsonld_get_defaults(),
 	) );
 
-	// --- Page Targeting ---
-	add_settings_section( 'wpjsonld_targeting', 'Page Targeting', '__return_false', 'wpjsonld-settings' );
-	add_settings_field( 'target_mode', 'Output JSON-LD on', 'wpjsonld_field_target_mode', 'wpjsonld-settings', 'wpjsonld_targeting' );
-	add_settings_field( 'target_page_ids', 'Specific Page IDs', 'wpjsonld_field_target_page_ids', 'wpjsonld-settings', 'wpjsonld_targeting' );
+	// --- Output Options ---
+	add_settings_section( 'wpjsonld_output', 'Output Options', 'wpjsonld_section_output_description', 'wpjsonld-settings' );
+	add_settings_field( 'sitewide_identity', 'Site-wide Identity Data', 'wpjsonld_field_sitewide_identity', 'wpjsonld-settings', 'wpjsonld_output' );
 
 	// --- Organization ---
 	add_settings_section( 'wpjsonld_org', 'Organization (itemReviewed)', '__return_false', 'wpjsonld-settings' );
@@ -207,10 +205,7 @@ function wpjsonld_register_settings() {
 function wpjsonld_sanitize_settings( $input ) {
 	$clean = wpjsonld_get_defaults();
 
-	$clean['target_mode'] = in_array( $input['target_mode'] ?? '', array( 'homepage', 'all', 'specific' ), true )
-		? $input['target_mode']
-		: 'homepage';
-	$clean['target_page_ids'] = sanitize_text_field( $input['target_page_ids'] ?? '' );
+	$clean['sitewide_identity'] = ! empty( $input['sitewide_identity'] ) ? '1' : '';
 
 	$url_keys = array( 'org_url', 'person_image', 'person_url', 'person_alumni_url' );
 	foreach ( $url_keys as $key ) {
@@ -236,32 +231,24 @@ function wpjsonld_sanitize_settings( $input ) {
 	return $clean;
 }
 
-function wpjsonld_field_target_mode() {
-	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
-	$mode = $opts['target_mode'] ?? 'homepage';
-	$options = array(
-		'homepage' => 'Homepage only',
-		'all'      => 'All pages',
-		'specific' => 'Specific page IDs',
-	);
-	foreach ( $options as $value => $label ) {
-		printf(
-			'<label><input type="radio" name="%s[target_mode]" value="%s" %s /> %s</label><br>',
-			esc_attr( WPJSONLD_OPTION_KEY ),
-			esc_attr( $value ),
-			checked( $mode, $value, false ),
-			esc_html( $label )
-		);
-	}
+function wpjsonld_section_output_description() {
+	echo '<p>JSON-LD is output automatically based on page context:</p>';
+	echo '<ul style="list-style:disc;margin-left:20px;">';
+	echo '<li><strong>Homepage</strong> — Full graph: Organization, Person, all Reviews, Services, AggregateRating</li>';
+	echo '<li><strong>Testimonials archive</strong> — Organization, Person, all Reviews, AggregateRating</li>';
+	echo '<li><strong>Single testimonial</strong> — Organization, that single Review</li>';
+	echo '<li><strong>Other pages/posts</strong> — Organization, Person, Services (if enabled below)</li>';
+	echo '</ul>';
 }
 
-function wpjsonld_field_target_page_ids() {
+function wpjsonld_field_sitewide_identity() {
 	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
 	printf(
-		'<input type="text" name="%s[target_page_ids]" value="%s" class="regular-text" /><p class="description">Comma-separated page IDs. Only used when "Specific page IDs" is selected.</p>',
+		'<label><input type="checkbox" name="%s[sitewide_identity]" value="1" %s /> Output Organization, Person, and Services on all pages and posts</label>',
 		esc_attr( WPJSONLD_OPTION_KEY ),
-		esc_attr( $opts['target_page_ids'] ?? '' )
+		checked( $opts['sitewide_identity'] ?? '', '1', false )
 	);
+	echo '<p class="description">When unchecked, identity data only appears on the homepage. Review data always follows page context regardless of this setting.</p>';
 }
 
 function wpjsonld_field_callback( $args ) {
@@ -555,38 +542,45 @@ function wpjsonld_save_testimonial_meta( $post_id, $post ) {
 
 add_action( 'wp_head', 'wpjsonld_output_jsonld', 99 );
 
-function wpjsonld_should_output() {
-	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
-	$mode = $opts['target_mode'] ?? 'homepage';
+/**
+ * Compute aggregate rating from all published testimonials.
+ * Returns array with 'total', 'count', and 'rating' keys (or null values if none).
+ */
+function wpjsonld_compute_aggregate_rating() {
+	$testimonials = get_posts( array(
+		'post_type'      => 'wpm-testimonial',
+		'post_status'    => 'publish',
+		'posts_per_page' => -1,
+		'fields'         => 'ids',
+	) );
 
-	switch ( $mode ) {
-		case 'homepage':
-			return is_front_page();
-		case 'all':
-			return true;
-		case 'specific':
-			$ids = array_map( 'intval', array_filter( explode( ',', $opts['target_page_ids'] ?? '' ) ) );
-			return is_page( $ids );
-		default:
-			return false;
+	$total = 0;
+	$count = 0;
+	foreach ( $testimonials as $id ) {
+		$star = get_post_meta( $id, 'star_rating', true );
+		if ( $star ) {
+			$total += (int) $star;
+			$count++;
+		}
 	}
+
+	if ( $count === 0 ) {
+		return null;
+	}
+
+	return array(
+		'@type'       => 'AggregateRating',
+		'ratingValue' => round( $total / $count, 1 ),
+		'reviewCount' => $count,
+		'bestRating'  => 5,
+		'worstRating' => 1,
+	);
 }
 
-function wpjsonld_output_jsonld() {
-	if ( ! wpjsonld_should_output() ) {
-		return;
-	}
-
-	$opts  = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
-	$graph = array();
-
-	// Build Organization.
-	$org = wpjsonld_build_organization( $opts );
-
-	// Build Person.
-	$person = wpjsonld_build_person( $opts );
-
-	// Query all published testimonials.
+/**
+ * Build all Review entities from published testimonials.
+ */
+function wpjsonld_build_all_reviews() {
 	$testimonials = get_posts( array(
 		'post_type'      => 'wpm-testimonial',
 		'post_status'    => 'publish',
@@ -595,46 +589,118 @@ function wpjsonld_output_jsonld() {
 		'order'          => 'ASC',
 	) );
 
-	// Build Review entities and compute aggregate.
-	$reviews      = array();
-	$total_rating = 0;
-	$rating_count = 0;
-
+	$reviews = array();
 	foreach ( $testimonials as $t ) {
 		$review = wpjsonld_build_review( $t );
 		if ( $review ) {
 			$reviews[] = $review;
-			$star = get_post_meta( $t->ID, 'star_rating', true );
-			if ( $star ) {
-				$total_rating += (int) $star;
-				$rating_count++;
+		}
+	}
+	return $reviews;
+}
+
+/**
+ * Context-aware JSON-LD output.
+ *
+ * Homepage:              Org (+ aggregateRating), Person, all Reviews, Services
+ * Testimonial archive:   Org (+ aggregateRating), Person, all Reviews
+ * Single testimonial:    Org, that single Review
+ * Other pages/posts:     Org, Person, Services (only if sitewide_identity enabled)
+ * 404/search/etc:        No output
+ */
+function wpjsonld_output_jsonld() {
+	if ( is_admin() || is_404() || is_search() ) {
+		return;
+	}
+
+	$opts  = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
+	$graph = array();
+
+	$include_reviews   = false;
+	$include_person    = false;
+	$include_services  = false;
+	$include_aggregate = false;
+	$single_review     = false;
+	$context_label     = '';
+
+	if ( is_front_page() ) {
+		// Homepage: full graph.
+		$include_reviews   = true;
+		$include_person    = true;
+		$include_services  = true;
+		$include_aggregate = true;
+		$context_label     = 'homepage';
+	} elseif ( is_post_type_archive( 'wpm-testimonial' ) ) {
+		// Testimonials archive: all reviews + identity.
+		$include_reviews   = true;
+		$include_person    = true;
+		$include_aggregate = true;
+		$context_label     = 'testimonial-archive';
+	} elseif ( is_singular( 'wpm-testimonial' ) ) {
+		// Single testimonial: just that review.
+		$single_review = true;
+		$context_label = 'single-testimonial';
+	} elseif ( is_singular() || is_page() ) {
+		// Other pages/posts: identity only if sitewide enabled.
+		if ( ! empty( $opts['sitewide_identity'] ) ) {
+			$include_person   = true;
+			$include_services = true;
+			$context_label    = 'page-sitewide';
+		} else {
+			return; // No output on non-homepage pages unless sitewide is on.
+		}
+	} else {
+		// Archives, categories, tags, etc.
+		if ( ! empty( $opts['sitewide_identity'] ) ) {
+			$include_person   = true;
+			$include_services = true;
+			$context_label    = 'archive-sitewide';
+		} else {
+			return;
+		}
+	}
+
+	// Organization is always included when we're outputting anything.
+	$org = wpjsonld_build_organization( $opts );
+
+	// Attach aggregateRating if needed.
+	if ( $include_aggregate ) {
+		$agg = wpjsonld_compute_aggregate_rating();
+		if ( $agg ) {
+			$org['aggregateRating'] = $agg;
+		}
+	}
+
+	// Build reviews.
+	$reviews = array();
+	if ( $include_reviews ) {
+		$reviews = wpjsonld_build_all_reviews();
+	} elseif ( $single_review ) {
+		global $post;
+		if ( $post ) {
+			$review = wpjsonld_build_review( $post );
+			if ( $review ) {
+				$reviews[] = $review;
 			}
 		}
 	}
 
-	// Attach aggregateRating to Organization.
-	if ( $rating_count > 0 ) {
-		$org['aggregateRating'] = array(
-			'@type'       => 'AggregateRating',
-			'ratingValue' => round( $total_rating / $rating_count, 1 ),
-			'reviewCount' => $rating_count,
-			'bestRating'  => 5,
-			'worstRating' => 1,
-		);
-	}
-
-	// Build Services.
-	$services = wpjsonld_build_services( $opts );
-
-	// Assemble graph: Reviews first, then Organization, Person, Services.
+	// Assemble graph.
 	foreach ( $reviews as $r ) {
 		$graph[] = $r;
 	}
 	$graph[] = $org;
-	foreach ( $services as $s ) {
-		$graph[] = $s;
+
+	if ( $include_services ) {
+		$services = wpjsonld_build_services( $opts );
+		foreach ( $services as $s ) {
+			$graph[] = $s;
+		}
 	}
-	$graph[] = $person;
+
+	if ( $include_person ) {
+		$graph[] = wpjsonld_build_person( $opts );
+	}
 
 	$schema = array(
 		'@context' => 'https://schema.org',
@@ -643,9 +709,10 @@ function wpjsonld_output_jsonld() {
 
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 		printf(
-			"<!-- WP JSON-LD Lite: %d reviews, avg rating: %s -->\n",
-			count( $reviews ),
-			$rating_count > 0 ? round( $total_rating / $rating_count, 1 ) : 'n/a'
+			"<!-- WP JSON-LD Lite v%s: context=%s, reviews=%d -->\n",
+			esc_html( WPJSONLD_VERSION ),
+			esc_html( $context_label ),
+			count( $reviews )
 		);
 	}
 
