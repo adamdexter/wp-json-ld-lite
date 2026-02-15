@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.1.0
+ * Version:     1.1.1
  * Author:      Adam Dexter
  * Author URI:  https://www.thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.1.0' );
+define( 'WPJSONLD_VERSION', '1.1.1' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /* ==========================================================================
@@ -937,13 +937,21 @@ function wpjsonld_build_review( $post ) {
 		unset( $review['reviewRating'] );
 	}
 
-	// itemReviewed.
+	// itemReviewed — use inline Organization (no @id) when there's a per-review
+	// description to avoid @id collision merging all descriptions onto #org.
 	if ( $reviewed_desc ) {
-		$review['itemReviewed'] = array(
+		$item_reviewed = array(
 			'@type'       => 'Organization',
-			'@id'         => '#org',
 			'description' => $reviewed_desc,
 		);
+		$org_opts = get_option( WPJSONLD_OPTION_KEY, array() );
+		if ( ! empty( $org_opts['org_name'] ) ) {
+			$item_reviewed['name'] = $org_opts['org_name'];
+		}
+		if ( ! empty( $org_opts['org_url'] ) ) {
+			$item_reviewed['url'] = $org_opts['org_url'];
+		}
+		$review['itemReviewed'] = $item_reviewed;
 	} else {
 		$review['itemReviewed'] = array( '@id' => '#org' );
 	}
