@@ -1,6 +1,6 @@
 # WP JSON-LD Lite
 
-A WordPress plugin that generates Review, Organization, Person, and Service JSON-LD structured data. Designed for thestartupfoundercoach.com.
+A WordPress plugin that generates Review, Organization, Person, and Service JSON-LD structured data. Originally designed for thestartupfoundercoach.com.
 
 ## Installation
 
