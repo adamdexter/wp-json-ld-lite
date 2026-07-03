@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.1.2
+ * Version:     1.2.0
  * Author:      Adam Dexter
  * Author URI:  https://www.thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.1.2' );
+define( 'WPJSONLD_VERSION', '1.2.0' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /* ==========================================================================
@@ -134,6 +134,7 @@ function wpjsonld_add_settings_page() {
 function wpjsonld_get_defaults() {
 	return array(
 		'sitewide_identity' => '',
+		'archive_page_id'   => '',
 		'org_name'          => '',
 		'org_url'           => '',
 		'org_description'   => '',
@@ -164,6 +165,7 @@ function wpjsonld_register_settings() {
 	// --- Output Options ---
 	add_settings_section( 'wpjsonld_output', 'Output Options', 'wpjsonld_section_output_description', 'wpjsonld-settings' );
 	add_settings_field( 'sitewide_identity', 'Site-wide Identity Data', 'wpjsonld_field_sitewide_identity', 'wpjsonld-settings', 'wpjsonld_output' );
+	add_settings_field( 'archive_page_id', 'Testimonials Archive Page', 'wpjsonld_field_archive_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
 
 	// --- Organization ---
 	add_settings_section( 'wpjsonld_org', 'Organization (itemReviewed)', '__return_false', 'wpjsonld-settings' );
@@ -207,6 +209,9 @@ function wpjsonld_sanitize_settings( $input ) {
 
 	$clean['sitewide_identity'] = ! empty( $input['sitewide_identity'] ) ? '1' : '';
 
+	$archive_page_id          = absint( $input['archive_page_id'] ?? 0 );
+	$clean['archive_page_id'] = $archive_page_id ? (string) $archive_page_id : '';
+
 	$url_keys = array( 'org_url', 'person_image', 'person_url', 'person_alumni_url' );
 	foreach ( $url_keys as $key ) {
 		$clean[ $key ] = esc_url_raw( $input[ $key ] ?? '' );
@@ -235,7 +240,7 @@ function wpjsonld_section_output_description() {
 	echo '<p>JSON-LD is output automatically based on page context:</p>';
 	echo '<ul style="list-style:disc;margin-left:20px;">';
 	echo '<li><strong>Homepage</strong> — Full graph: Organization, Person, all Reviews, Services, AggregateRating</li>';
-	echo '<li><strong>Testimonials archive</strong> — Organization, Person, all Reviews, AggregateRating</li>';
+	echo '<li><strong>Testimonials archive</strong> — Organization, Person, all Reviews, AggregateRating (the CPT archive, or the page selected below)</li>';
 	echo '<li><strong>Single testimonial</strong> — Organization, that single Review</li>';
 	echo '<li><strong>Other pages/posts</strong> — Organization, Person, Services (if enabled below)</li>';
 	echo '</ul>';
@@ -249,6 +254,17 @@ function wpjsonld_field_sitewide_identity() {
 		checked( $opts['sitewide_identity'] ?? '', '1', false )
 	);
 	echo '<p class="description">When unchecked, identity data only appears on the homepage. Review data always follows page context regardless of this setting.</p>';
+}
+
+function wpjsonld_field_archive_page_id() {
+	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
+	wp_dropdown_pages( array(
+		'name'              => WPJSONLD_OPTION_KEY . '[archive_page_id]',
+		'selected'          => (int) ( $opts['archive_page_id'] ?? 0 ),
+		'show_option_none'  => '— None —',
+		'option_none_value' => '0',
+	) );
+	echo '<p class="description">The testimonial post type has no built-in archive; if your testimonials listing is a regular page (e.g. /testimonials/), select it here so it gets the full Reviews + AggregateRating markup.</p>';
 }
 
 function wpjsonld_field_callback( $args ) {
@@ -608,6 +624,15 @@ function wpjsonld_build_all_reviews() {
  * Other pages/posts:     Org, Person, Services (only if sitewide_identity enabled)
  * 404/search/etc:        No output
  */
+/**
+ * Is the current page the designated testimonials archive page?
+ */
+function wpjsonld_is_archive_page( $opts ) {
+	$page_id = (int) ( $opts['archive_page_id'] ?? 0 );
+
+	return $page_id && is_page( $page_id );
+}
+
 function wpjsonld_output_jsonld() {
 	if ( is_admin() || is_404() || is_search() ) {
 		return;
@@ -630,8 +655,10 @@ function wpjsonld_output_jsonld() {
 		$include_services  = true;
 		$include_aggregate = true;
 		$context_label     = 'homepage';
-	} elseif ( is_post_type_archive( 'wpm-testimonial' ) ) {
-		// Testimonials archive: all reviews + identity.
+	} elseif ( is_post_type_archive( 'wpm-testimonial' ) || wpjsonld_is_archive_page( $opts ) ) {
+		// Testimonials archive (CPT archive, or the designated page — the CPT
+		// registers with has_archive=false, so /testimonials/ is a regular
+		// page): all reviews + identity.
 		$include_reviews   = true;
 		$include_person    = true;
 		$include_aggregate = true;
