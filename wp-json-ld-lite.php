@@ -658,10 +658,12 @@ function wpjsonld_output_jsonld() {
 	} elseif ( is_post_type_archive( 'wpm-testimonial' ) || wpjsonld_is_archive_page( $opts ) ) {
 		// Testimonials archive (CPT archive, or the designated page — the CPT
 		// registers with has_archive=false, so /testimonials/ is a regular
-		// page): all reviews + identity.
+		// page): all reviews + identity. Keep Services when sitewide identity
+		// is on, matching what the page would get from the sitewide branch.
 		$include_reviews   = true;
 		$include_person    = true;
 		$include_aggregate = true;
+		$include_services  = ! empty( $opts['sitewide_identity'] );
 		$context_label     = 'testimonial-archive';
 	} elseif ( is_singular( 'wpm-testimonial' ) ) {
 		// Single testimonial: just that review.
