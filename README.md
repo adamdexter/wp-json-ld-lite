@@ -22,7 +22,7 @@ This plugin is designed to work with [Strong Testimonials](https://wordpress.org
 
 All settings are stored as a single option (`wpjsonld_settings`). Four sections:
 
-- **Output Options** — Context-aware output is automatic; optional checkbox to enable Organization/Person/Services on all pages
+- **Output Options** — Context-aware output is automatic; optional checkbox to enable Organization/Person/Services on all pages, plus a "Testimonials Archive Page" selector (since the testimonial post type has no built-in archive, pick the regular page — e.g. /testimonials/ — that lists them; it then gets the full Reviews + AggregateRating output)
 - **Organization** — Name, URL, description, sameAs URLs, founding date, contact info
 - **Person** — Name, description, job title, image, sameAs URLs, alumniOf, knowsAbout
 - **Services** — JSON textarea for an array of Service objects (invalid JSON falls back to `[]` on save)
@@ -46,12 +46,22 @@ Outputs a `<script type="application/ld+json">` block in `wp_head` with context-
 | Page Type | Org | Person | Reviews | Services | AggregateRating |
 |-----------|-----|--------|---------|----------|-----------------|
 | Homepage | Yes | Yes | All | Yes | Yes |
-| Testimonials archive | Yes | Yes | All | No | Yes |
+| Testimonials archive** | Yes | Yes | All | If sitewide | Yes |
 | Single testimonial | Yes | No | That one | No | No |
 | Other pages/posts* | Yes | Yes | No | Yes | No |
 
 *Only when "Site-wide Identity Data" is enabled in settings. Otherwise, only the homepage and testimonial pages get JSON-LD.
 
+**The CPT archive, or the page chosen as "Testimonials Archive Page" in settings.
+
+## Works without Strong Testimonials
+
+As of the jacked-testimonials swap (2026-07-03) the site runs a Strong
+Testimonials-compatible replacement; this plugin needs only the
+`wpm-testimonial` post type and its meta keys, which the replacement provides
+identically. The `wpmtst_after_client_fields` hook it uses for the editor
+fields is likewise preserved.
+
 ## Version
 
-Current version: 1.1.2
+Current version: 1.2.0
