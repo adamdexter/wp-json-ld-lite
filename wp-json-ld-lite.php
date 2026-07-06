@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.3.0
+ * Version:     1.4.0
  * Author:      Adam Dexter
  * Author URI:  https://thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.3.0' );
+define( 'WPJSONLD_VERSION', '1.4.0' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /**
@@ -158,6 +158,7 @@ function wpjsonld_get_defaults() {
 	return array(
 		'sitewide_identity' => '',
 		'archive_page_id'   => '',
+		'faq_page_id'       => '',
 		'org_name'          => '',
 		'org_url'           => '',
 		'org_description'   => '',
@@ -189,6 +190,7 @@ function wpjsonld_register_settings() {
 	add_settings_section( 'wpjsonld_output', 'Output Options', 'wpjsonld_section_output_description', 'wpjsonld-settings' );
 	add_settings_field( 'sitewide_identity', 'Site-wide Identity Data', 'wpjsonld_field_sitewide_identity', 'wpjsonld-settings', 'wpjsonld_output' );
 	add_settings_field( 'archive_page_id', 'Testimonials Archive Page', 'wpjsonld_field_archive_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
+	add_settings_field( 'faq_page_id', 'FAQ Page (FAQPage schema)', 'wpjsonld_field_faq_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
 
 	// --- Organization ---
 	add_settings_section( 'wpjsonld_org', 'Organization (itemReviewed)', '__return_false', 'wpjsonld-settings' );
@@ -234,6 +236,9 @@ function wpjsonld_sanitize_settings( $input ) {
 
 	$archive_page_id          = absint( $input['archive_page_id'] ?? 0 );
 	$clean['archive_page_id'] = $archive_page_id ? (string) $archive_page_id : '';
+
+	$faq_page_id          = absint( $input['faq_page_id'] ?? 0 );
+	$clean['faq_page_id'] = $faq_page_id ? (string) $faq_page_id : '';
 
 	$url_keys = array( 'org_url', 'person_image', 'person_url', 'person_alumni_url' );
 	foreach ( $url_keys as $key ) {
@@ -288,6 +293,17 @@ function wpjsonld_field_archive_page_id() {
 		'option_none_value' => '0',
 	) );
 	echo '<p class="description">The testimonial post type has no built-in archive; if your testimonials listing is a regular page (e.g. /testimonials/), select it here so it gets the full Reviews + AggregateRating markup.</p>';
+}
+
+function wpjsonld_field_faq_page_id() {
+	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
+	wp_dropdown_pages( array(
+		'name'              => WPJSONLD_OPTION_KEY . '[faq_page_id]',
+		'selected'          => (int) ( $opts['faq_page_id'] ?? 0 ),
+		'show_option_none'  => '— None —',
+		'option_none_value' => '0',
+	) );
+	echo '<p class="description">Select your FAQ page to emit FAQPage schema. Questions and answers are read live from the page\'s Elementor accordion/toggle widgets, so the markup always matches the visible content (a Google requirement) with no duplication to maintain.</p>';
 }
 
 function wpjsonld_field_callback( $args ) {
@@ -656,6 +672,68 @@ function wpjsonld_is_archive_page( $opts ) {
 	return $page_id && is_page( $page_id );
 }
 
+function wpjsonld_is_faq_page( $opts ) {
+	$page_id = (int) ( $opts['faq_page_id'] ?? 0 );
+
+	return $page_id && is_page( $page_id );
+}
+
+/**
+ * Build a FAQPage node from the FAQ page's Elementor accordion/toggle widgets.
+ *
+ * Reads _elementor_data live at render time rather than duplicating the Q&A
+ * in settings: Google requires FAQPage markup to match visible page content,
+ * and this guarantees it survives content edits with zero maintenance.
+ */
+function wpjsonld_build_faqpage( $page_id ) {
+	$raw = get_post_meta( $page_id, '_elementor_data', true );
+	if ( ! $raw ) {
+		return null;
+	}
+	$data = json_decode( $raw, true );
+	if ( ! is_array( $data ) ) {
+		return null;
+	}
+
+	$questions = array();
+	$walk      = function ( $els ) use ( &$walk, &$questions ) {
+		foreach ( $els as $el ) {
+			$widget = $el['widgetType'] ?? '';
+			if ( in_array( $widget, array( 'accordion', 'toggle', 'nested-accordion' ), true ) ) {
+				$items = $el['settings']['tabs'] ?? $el['settings']['items'] ?? array();
+				foreach ( $items as $item ) {
+					$q = trim( wp_strip_all_tags( $item['tab_title'] ?? $item['item_title'] ?? '' ) );
+					$a = trim( wp_strip_all_tags( $item['tab_content'] ?? $item['item_content'] ?? '' ) );
+					if ( $q && $a ) {
+						$questions[] = array(
+							'@type'          => 'Question',
+							'name'           => $q,
+							'acceptedAnswer' => array(
+								'@type' => 'Answer',
+								'text'  => $a,
+							),
+						);
+					}
+				}
+			}
+			if ( ! empty( $el['elements'] ) ) {
+				$walk( $el['elements'] );
+			}
+		}
+	};
+	$walk( $data );
+
+	if ( ! $questions ) {
+		return null;
+	}
+
+	return array(
+		'@type'      => 'FAQPage',
+		'@id'        => get_permalink( $page_id ) . '#faqpage',
+		'mainEntity' => $questions,
+	);
+}
+
 function wpjsonld_output_jsonld() {
 	if ( is_admin() || is_404() || is_search() ) {
 		return;
@@ -668,6 +746,7 @@ function wpjsonld_output_jsonld() {
 	$include_person    = false;
 	$include_services  = false;
 	$include_aggregate = false;
+	$include_faq       = false;
 	$single_review     = false;
 	$context_label     = '';
 
@@ -693,13 +772,17 @@ function wpjsonld_output_jsonld() {
 		$single_review = true;
 		$context_label = 'single-testimonial';
 	} elseif ( is_singular() || is_page() ) {
-		// Other pages/posts: identity only if sitewide enabled.
+		// Other pages/posts: identity only if sitewide enabled. The FAQ page
+		// additionally gets a FAQPage node, and outputs even with sitewide off.
+		$include_faq = wpjsonld_is_faq_page( $opts );
 		if ( ! empty( $opts['sitewide_identity'] ) ) {
 			$include_person   = true;
 			$include_services = true;
-			$context_label    = 'page-sitewide';
-		} else {
+			$context_label    = $include_faq ? 'faq-page' : 'page-sitewide';
+		} elseif ( ! $include_faq ) {
 			return; // No output on non-homepage pages unless sitewide is on.
+		} else {
+			$context_label = 'faq-page';
 		}
 	} else {
 		// Archives, categories, tags, etc.
@@ -752,6 +835,13 @@ function wpjsonld_output_jsonld() {
 
 	if ( $include_person ) {
 		$graph[] = wpjsonld_build_person( $opts );
+	}
+
+	if ( ! empty( $include_faq ) ) {
+		$faq = wpjsonld_build_faqpage( (int) ( $opts['faq_page_id'] ?? 0 ) );
+		if ( $faq ) {
+			$graph[] = $faq;
+		}
 	}
 
 	$schema = array(
