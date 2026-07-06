@@ -3,9 +3,9 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.2.0
+ * Version:     1.3.0
  * Author:      Adam Dexter
- * Author URI:  https://www.thestartupfoundercoach.com/
+ * Author URI:  https://thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
  * Text Domain: wp-json-ld-lite
  */
@@ -14,8 +14,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.2.0' );
+define( 'WPJSONLD_VERSION', '1.3.0' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
+
+/**
+ * Absolute @id for the Person entity.
+ *
+ * Deliberately matches Rank Math's knowledge-graph node id
+ * ({home_url}/#person) so search engines and LLMs merge this plugin's
+ * Person (sameAs, knowsAbout, jobTitle, image) with Rank Math's into a
+ * single entity instead of seeing two different Adam Dexters.
+ */
+function wpjsonld_person_id() {
+	return trailingslashit( home_url() ) . '#person';
+}
+
+/**
+ * Absolute @id for the Organization entity.
+ *
+ * The business ("The Startup Founder Coach") is kept distinct from the
+ * Person; an absolute id (vs the old relative "#wpjsonld-org") keeps the
+ * reference stable when schema consumers resolve nodes across pages.
+ */
+function wpjsonld_org_id() {
+	return trailingslashit( home_url() ) . '#organization';
+}
 
 /* ==========================================================================
    A2. DEPENDENCY NOTICE
@@ -754,7 +777,7 @@ function wpjsonld_output_jsonld() {
 function wpjsonld_build_organization( $opts ) {
 	$org = array(
 		'@type' => 'Organization',
-		'@id'   => '#wpjsonld-org',
+		'@id'   => wpjsonld_org_id(),
 	);
 
 	if ( ! empty( $opts['org_name'] ) ) {
@@ -769,7 +792,7 @@ function wpjsonld_build_organization( $opts ) {
 		$org['sameAs'] = $sameas;
 	}
 
-	$org['founder'] = array( '@id' => '#wpjsonld-person' );
+	$org['founder'] = array( '@id' => wpjsonld_person_id() );
 
 	if ( ! empty( $opts['org_founding_date'] ) ) {
 		$org['foundingDate'] = $opts['org_founding_date'];
@@ -796,7 +819,7 @@ function wpjsonld_build_organization( $opts ) {
 function wpjsonld_build_person( $opts ) {
 	$person = array(
 		'@type' => 'Person',
-		'@id'   => '#wpjsonld-person',
+		'@id'   => wpjsonld_person_id(),
 	);
 
 	if ( ! empty( $opts['person_name'] ) ) {
@@ -832,7 +855,7 @@ function wpjsonld_build_person( $opts ) {
 		$person['alumniOf'] = $alumni;
 	}
 
-	$person['worksFor'] = array( '@id' => '#wpjsonld-org' );
+	$person['worksFor'] = array( '@id' => wpjsonld_org_id() );
 
 	$knows = wpjsonld_parse_line_list( $opts['person_knows_about'] ?? '' );
 	if ( $knows ) {
@@ -982,11 +1005,11 @@ function wpjsonld_build_review( $post ) {
 		}
 		$review['itemReviewed'] = $item_reviewed;
 	} else {
-		$review['itemReviewed'] = array( '@id' => '#wpjsonld-org' );
+		$review['itemReviewed'] = array( '@id' => wpjsonld_org_id() );
 	}
 
 	// publisher.
-	$review['publisher'] = array( '@id' => '#wpjsonld-org' );
+	$review['publisher'] = array( '@id' => wpjsonld_org_id() );
 
 	return $review;
 }
