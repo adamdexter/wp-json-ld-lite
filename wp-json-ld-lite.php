@@ -3,7 +3,7 @@
  * Plugin Name: WP JSON-LD Lite
  * Plugin URI:  https://github.com/adamdexter/wp-json-ld-lite
  * Description: Generates Review JSON-LD structured data from Strong Testimonials data.
- * Version:     1.4.0
+ * Version:     1.5.0
  * Author:      Adam Dexter
  * Author URI:  https://thestartupfoundercoach.com/
  * License:     GPL-2.0-or-later
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPJSONLD_VERSION', '1.4.0' );
+define( 'WPJSONLD_VERSION', '1.5.0' );
 define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
 
 /**
@@ -26,6 +26,10 @@ define( 'WPJSONLD_OPTION_KEY', 'wpjsonld_settings' );
  * single entity instead of seeing two different Adam Dexters.
  */
 function wpjsonld_person_id() {
+	$opts = get_option( WPJSONLD_OPTION_KEY, array() );
+	if ( ! empty( $opts['person_id'] ) ) {
+		return $opts['person_id']; // Canonical entity home, e.g. https://adamdexter.net/#person
+	}
 	return trailingslashit( home_url() ) . '#person';
 }
 
@@ -159,15 +163,27 @@ function wpjsonld_get_defaults() {
 		'sitewide_identity' => '',
 		'archive_page_id'   => '',
 		'faq_page_id'       => '',
+		'about_page_id'     => '',
 		'org_name'          => '',
+		'org_alternate_name' => '',
+		'org_logo'          => '',
+		'org_area_served'   => '',
 		'org_url'           => '',
 		'org_description'   => '',
 		'org_sameas'        => '',
 		'org_founding_date' => '',
 		'org_contact_type'  => '',
 		'org_contact_email' => '',
+		'person_id'         => '',
 		'person_name'       => '',
+		'person_given_name' => '',
+		'person_family_name' => '',
 		'person_description' => '',
+		'person_disambiguating_description' => '',
+		'person_occupations' => '',
+		'person_locality'   => '',
+		'person_region'     => '',
+		'person_country'    => '',
 		'person_job_title'  => '',
 		'person_image'      => '',
 		'person_url'        => '',
@@ -191,12 +207,16 @@ function wpjsonld_register_settings() {
 	add_settings_field( 'sitewide_identity', 'Site-wide Identity Data', 'wpjsonld_field_sitewide_identity', 'wpjsonld-settings', 'wpjsonld_output' );
 	add_settings_field( 'archive_page_id', 'Testimonials Archive Page', 'wpjsonld_field_archive_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
 	add_settings_field( 'faq_page_id', 'FAQ Page (FAQPage schema)', 'wpjsonld_field_faq_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
+	add_settings_field( 'about_page_id', 'About Page (ProfilePage schema)', 'wpjsonld_field_about_page_id', 'wpjsonld-settings', 'wpjsonld_output' );
 
 	// --- Organization ---
 	add_settings_section( 'wpjsonld_org', 'Organization (itemReviewed)', '__return_false', 'wpjsonld-settings' );
 	$org_fields = array(
 		'org_name'          => 'Name',
+		'org_alternate_name' => 'Alternate Name',
 		'org_url'           => 'URL',
+		'org_logo'          => 'Logo URL',
+		'org_area_served'   => 'Area Served',
 		'org_description'   => 'Description',
 		'org_sameas'        => 'sameAs URLs (one per line)',
 		'org_founding_date' => 'Founding Date (year)',
@@ -210,8 +230,16 @@ function wpjsonld_register_settings() {
 	// --- Person ---
 	add_settings_section( 'wpjsonld_person', 'Person (Site Owner)', '__return_false', 'wpjsonld-settings' );
 	$person_fields = array(
+		'person_id'          => '@id (canonical entity URL, e.g. https://example.com/#person; blank = this site)',
 		'person_name'        => 'Name',
+		'person_given_name'  => 'Given Name',
+		'person_family_name' => 'Family Name',
 		'person_description' => 'Description',
+		'person_disambiguating_description' => 'Disambiguating Description',
+		'person_occupations' => 'Occupations (one per line)',
+		'person_locality'    => 'Home Location: City',
+		'person_region'      => 'Home Location: Region',
+		'person_country'     => 'Home Location: Country (ISO code)',
 		'person_job_title'   => 'Job Title',
 		'person_image'       => 'Image URL',
 		'person_url'         => 'URL',
@@ -240,17 +268,20 @@ function wpjsonld_sanitize_settings( $input ) {
 	$faq_page_id          = absint( $input['faq_page_id'] ?? 0 );
 	$clean['faq_page_id'] = $faq_page_id ? (string) $faq_page_id : '';
 
-	$url_keys = array( 'org_url', 'person_image', 'person_url', 'person_alumni_url' );
+	$about_page_id          = absint( $input['about_page_id'] ?? 0 );
+	$clean['about_page_id'] = $about_page_id ? (string) $about_page_id : '';
+
+	$url_keys = array( 'org_url', 'org_logo', 'person_id', 'person_image', 'person_url', 'person_alumni_url' );
 	foreach ( $url_keys as $key ) {
 		$clean[ $key ] = esc_url_raw( $input[ $key ] ?? '' );
 	}
 
-	$text_keys = array( 'org_name', 'org_founding_date', 'org_contact_type', 'org_contact_email', 'person_name', 'person_job_title', 'person_alumni_name' );
+	$text_keys = array( 'org_name', 'org_alternate_name', 'org_area_served', 'org_founding_date', 'org_contact_type', 'org_contact_email', 'person_name', 'person_given_name', 'person_family_name', 'person_job_title', 'person_alumni_name', 'person_locality', 'person_region', 'person_country' );
 	foreach ( $text_keys as $key ) {
 		$clean[ $key ] = sanitize_text_field( $input[ $key ] ?? '' );
 	}
 
-	$textarea_keys = array( 'org_description', 'org_sameas', 'person_description', 'person_sameas', 'person_knows_about' );
+	$textarea_keys = array( 'org_description', 'org_sameas', 'person_description', 'person_disambiguating_description', 'person_occupations', 'person_sameas', 'person_knows_about' );
 	foreach ( $textarea_keys as $key ) {
 		$clean[ $key ] = sanitize_textarea_field( $input[ $key ] ?? '' );
 	}
@@ -270,7 +301,8 @@ function wpjsonld_section_output_description() {
 	echo '<li><strong>Homepage</strong> — Full graph: Organization, Person, all Reviews, Services, AggregateRating</li>';
 	echo '<li><strong>Testimonials archive</strong> — Organization, Person, all Reviews, AggregateRating (the CPT archive, or the page selected below)</li>';
 	echo '<li><strong>Single testimonial</strong> — Organization, that single Review</li>';
-	echo '<li><strong>Other pages/posts</strong> — Organization, Person, Services (if enabled below)</li>';
+	echo '<li><strong>About page</strong> — Organization, ProfilePage, Person, Services (if enabled below)</li>';
+	echo '<li><strong>Other pages/posts</strong> — Organization (founder → Person @id), Services (if enabled below)</li>';
 	echo '</ul>';
 }
 
@@ -306,12 +338,23 @@ function wpjsonld_field_faq_page_id() {
 	echo '<p class="description">Select your FAQ page to emit FAQPage schema. Questions and answers are read live from the page\'s Elementor accordion/toggle widgets, so the markup always matches the visible content (a Google requirement) with no duplication to maintain.</p>';
 }
 
+function wpjsonld_field_about_page_id() {
+	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
+	wp_dropdown_pages( array(
+		'name'              => WPJSONLD_OPTION_KEY . '[about_page_id]',
+		'selected'          => (int) ( $opts['about_page_id'] ?? 0 ),
+		'show_option_none'  => '— None —',
+		'option_none_value' => '0',
+	) );
+	echo '<p class="description">Select the About page. It gets a ProfilePage node whose mainEntity is the Person, plus the full Person node. Other pages only reference the Person by @id (as Organization.founder).</p>';
+}
+
 function wpjsonld_field_callback( $args ) {
 	$key  = $args['key'];
 	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
 	$val  = $opts[ $key ] ?? '';
 
-	$textarea_keys = array( 'org_description', 'org_sameas', 'person_description', 'person_sameas', 'person_knows_about' );
+	$textarea_keys = array( 'org_description', 'org_sameas', 'person_description', 'person_disambiguating_description', 'person_occupations', 'person_sameas', 'person_knows_about' );
 
 	if ( in_array( $key, $textarea_keys, true ) ) {
 		printf(
@@ -747,8 +790,10 @@ function wpjsonld_output_jsonld() {
 	$include_services  = false;
 	$include_aggregate = false;
 	$include_faq       = false;
+	$include_profile   = false;
 	$single_review     = false;
 	$context_label     = '';
+	$about_page_id     = (int) ( $opts['about_page_id'] ?? 0 );
 
 	if ( is_front_page() ) {
 		// Homepage: full graph.
@@ -763,7 +808,6 @@ function wpjsonld_output_jsonld() {
 		// page): all reviews + identity. Keep Services when sitewide identity
 		// is on, matching what the page would get from the sitewide branch.
 		$include_reviews   = true;
-		$include_person    = true;
 		$include_aggregate = true;
 		$include_services  = ! empty( $opts['sitewide_identity'] );
 		$context_label     = 'testimonial-archive';
@@ -774,9 +818,14 @@ function wpjsonld_output_jsonld() {
 	} elseif ( is_singular() || is_page() ) {
 		// Other pages/posts: identity only if sitewide enabled. The FAQ page
 		// additionally gets a FAQPage node, and outputs even with sitewide off.
-		$include_faq = wpjsonld_is_faq_page( $opts );
-		if ( ! empty( $opts['sitewide_identity'] ) ) {
+		$include_faq     = wpjsonld_is_faq_page( $opts );
+		$include_profile = $about_page_id && is_page( $about_page_id );
+		if ( $include_profile ) {
+			// About page: ProfilePage + the full Person node (the only page besides the homepage that carries it).
 			$include_person   = true;
+			$include_services = ! empty( $opts['sitewide_identity'] );
+			$context_label    = 'about-page';
+		} elseif ( ! empty( $opts['sitewide_identity'] ) ) {
 			$include_services = true;
 			$context_label    = $include_faq ? 'faq-page' : 'page-sitewide';
 		} elseif ( ! $include_faq ) {
@@ -787,7 +836,6 @@ function wpjsonld_output_jsonld() {
 	} else {
 		// Archives, categories, tags, etc.
 		if ( ! empty( $opts['sitewide_identity'] ) ) {
-			$include_person   = true;
 			$include_services = true;
 			$context_label    = 'archive-sitewide';
 		} else {
@@ -833,6 +881,10 @@ function wpjsonld_output_jsonld() {
 		}
 	}
 
+	if ( $include_profile ) {
+		$graph[] = wpjsonld_build_profilepage( $about_page_id );
+	}
+
 	if ( $include_person ) {
 		$graph[] = wpjsonld_build_person( $opts );
 	}
@@ -873,8 +925,21 @@ function wpjsonld_build_organization( $opts ) {
 	if ( ! empty( $opts['org_name'] ) ) {
 		$org['name'] = $opts['org_name'];
 	}
+	if ( ! empty( $opts['org_alternate_name'] ) ) {
+		$org['alternateName'] = $opts['org_alternate_name'];
+	}
 	if ( ! empty( $opts['org_url'] ) ) {
 		$org['url'] = $opts['org_url'];
+	}
+	if ( ! empty( $opts['org_logo'] ) ) {
+		$org['logo'] = array(
+			'@type'      => 'ImageObject',
+			'@id'        => trailingslashit( home_url() ) . '#logo',
+			'url'        => $opts['org_logo'],
+			'contentUrl' => $opts['org_logo'],
+			'caption'    => $opts['org_name'] ?? '',
+		);
+		$org['image'] = array( '@id' => trailingslashit( home_url() ) . '#logo' );
 	}
 
 	$sameas = wpjsonld_parse_url_list( $opts['org_sameas'] ?? '' );
@@ -882,7 +947,12 @@ function wpjsonld_build_organization( $opts ) {
 		$org['sameAs'] = $sameas;
 	}
 
-	$org['founder'] = array( '@id' => wpjsonld_person_id() );
+	$org['founder']  = array( '@id' => wpjsonld_person_id() );
+	$org['employee'] = array( '@id' => wpjsonld_person_id() );
+
+	if ( ! empty( $opts['org_area_served'] ) ) {
+		$org['areaServed'] = $opts['org_area_served'];
+	}
 
 	if ( ! empty( $opts['org_founding_date'] ) ) {
 		$org['foundingDate'] = $opts['org_founding_date'];
@@ -915,11 +985,38 @@ function wpjsonld_build_person( $opts ) {
 	if ( ! empty( $opts['person_name'] ) ) {
 		$person['name'] = $opts['person_name'];
 	}
+	if ( ! empty( $opts['person_given_name'] ) ) {
+		$person['givenName'] = $opts['person_given_name'];
+	}
+	if ( ! empty( $opts['person_family_name'] ) ) {
+		$person['familyName'] = $opts['person_family_name'];
+	}
 	if ( ! empty( $opts['person_description'] ) ) {
 		$person['description'] = $opts['person_description'];
 	}
+	if ( ! empty( $opts['person_disambiguating_description'] ) ) {
+		$person['disambiguatingDescription'] = $opts['person_disambiguating_description'];
+	}
 	if ( ! empty( $opts['person_job_title'] ) ) {
 		$person['jobTitle'] = $opts['person_job_title'];
+	}
+
+	$occupations = wpjsonld_parse_line_list( $opts['person_occupations'] ?? '' );
+	if ( $occupations ) {
+		$person['hasOccupation'] = array_map( function ( $name ) {
+			return array( '@type' => 'Occupation', 'name' => $name );
+		}, $occupations );
+	}
+
+	if ( ! empty( $opts['person_locality'] ) ) {
+		$address = array( '@type' => 'PostalAddress', 'addressLocality' => $opts['person_locality'] );
+		if ( ! empty( $opts['person_region'] ) ) {
+			$address['addressRegion'] = $opts['person_region'];
+		}
+		if ( ! empty( $opts['person_country'] ) ) {
+			$address['addressCountry'] = $opts['person_country'];
+		}
+		$person['homeLocation'] = array( '@type' => 'Place', 'address' => $address );
 	}
 
 	$sameas = wpjsonld_parse_url_list( $opts['person_sameas'] ?? '' );
@@ -1104,6 +1201,99 @@ function wpjsonld_build_review( $post ) {
 	return $review;
 }
 
+/**
+ * ProfilePage node for the About page: the page is *about* the Person whose
+ * canonical @id lives at the entity home (see wpjsonld_person_id()).
+ */
+function wpjsonld_build_profilepage( $page_id ) {
+	$url = get_permalink( $page_id );
+	$node = array(
+		'@type'      => 'ProfilePage',
+		'@id'        => $url . '#profilepage',
+		'url'        => $url,
+		'name'       => wp_strip_all_tags( get_the_title( $page_id ) ),
+		'isPartOf'   => array( '@id' => trailingslashit( home_url() ) . '#website' ),
+		'about'      => array( '@id' => wpjsonld_person_id() ),
+		'mainEntity' => array( '@id' => wpjsonld_person_id() ),
+	);
+	$modified = get_post_modified_time( 'c', true, $page_id );
+	if ( $modified ) {
+		$node['dateModified'] = $modified;
+	}
+	return $node;
+}
+
+/**
+ * Single-source the Organization: drop Rank Math's knowledge-graph node
+ * ('publisher') so only this plugin emits Organization/Person, and name the
+ * WebSite after the Organization. Rank Math keeps WebSite/WebPage/Breadcrumb;
+ * its WebSite.publisher / WebPage.publisher references resolve to this
+ * plugin's #organization because both use {home_url}/#organization.
+ */
+add_filter( 'rank_math/json_ld', 'wpjsonld_filter_rank_math', 99, 2 );
+
+function wpjsonld_filter_rank_math( $data, $jsonld = null ) {
+	if ( ! is_array( $data ) ) {
+		return $data;
+	}
+	$opts = get_option( WPJSONLD_OPTION_KEY, wpjsonld_get_defaults() );
+	if ( empty( $opts['org_name'] ) ) {
+		return $data; // Plugin not configured: leave Rank Math alone.
+	}
+
+	$org_id = wpjsonld_org_id();
+	$old_id = isset( $data['publisher']['@id'] ) ? $data['publisher']['@id'] : '';
+	unset( $data['publisher'] );
+
+	// Re-point any reference to the removed node at our Organization.
+	if ( $old_id && $old_id !== $org_id ) {
+		$walk = function ( &$node ) use ( &$walk, $old_id, $org_id ) {
+			if ( ! is_array( $node ) ) {
+				return;
+			}
+			if ( isset( $node['@id'] ) && $node['@id'] === $old_id && 1 === count( $node ) ) {
+				$node['@id'] = $org_id;
+				return;
+			}
+			foreach ( $node as &$child ) {
+				$walk( $child );
+			}
+		};
+		$walk( $data );
+	}
+
+	// Drop ImageObject nodes that only existed to illustrate the removed knowledge-graph node.
+	$blob = wp_json_encode( $data );
+	foreach ( $data as $key => $node ) {
+		if ( is_array( $node ) && isset( $node['@type'], $node['@id'] ) && 'ImageObject' === $node['@type'] ) {
+			$refs = substr_count( $blob, wp_json_encode( $node['@id'] ) );
+			if ( $refs <= 1 ) { // Only its own declaration; nothing references it.
+				unset( $data[ $key ] );
+			}
+		}
+	}
+
+	foreach ( $data as $key => &$node ) {
+		if ( is_array( $node ) && isset( $node['@type'] ) && 'WebSite' === $node['@type'] ) {
+			$alternates = array();
+			if ( ! empty( $node['alternateName'] ) ) {
+				$alternates = (array) $node['alternateName'];
+			}
+			if ( ! empty( $node['name'] ) && $node['name'] !== $opts['org_name'] ) {
+				array_unshift( $alternates, $node['name'] );
+			}
+			$node['name']      = $opts['org_name'];
+			$node['publisher'] = array( '@id' => $org_id );
+			if ( $alternates ) {
+				$node['alternateName'] = array_values( array_unique( $alternates ) );
+			}
+		}
+	}
+	unset( $node );
+
+	return $data;
+}
+
 function wpjsonld_build_services( $opts ) {
 	$json     = $opts['services_json'] ?? '[]';
 	$services = json_decode( $json, true );
@@ -1111,6 +1301,8 @@ function wpjsonld_build_services( $opts ) {
 		return array();
 	}
 	foreach ( $services as &$svc ) {
+		unset( $svc['offers'] ); // No pricing is published on the site (decision 2026-08-28).
+		$svc['provider'] = array( '@id' => wpjsonld_org_id() ); // Reference the single Organization node, never an inline copy.
 		if ( ! isset( $svc['@type'] ) ) {
 			$svc['@type'] = 'Service';
 		}

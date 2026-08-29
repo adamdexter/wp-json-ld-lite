@@ -65,3 +65,13 @@ fields is likewise preserved.
 ## Version
 
 Current version: 1.2.0
+
+
+## 1.5.0 (2026-08-28) — entity home + single-emitter
+
+- **Person `@id` is configurable** (`person_id`, e.g. `https://adamdexter.net/#person`). The site is modeled as the Organization; the Person's canonical node lives at the entity home and is referenced by `@id` (`founder`, `employee`).
+- **Person is emitted in full only on the homepage and the About page** (`about_page_id`, which also gets a `ProfilePage` node with `about`/`mainEntity` → Person). Everywhere else the Organization references the Person by `@id` only.
+- New Person fields: `givenName`/`familyName`, `disambiguatingDescription`, `hasOccupation` (one per line), `homeLocation` (city/region/country).
+- New Organization fields: `alternateName`, `logo` (ImageObject `#logo`), `areaServed`; `employee` → Person.
+- **Services never emit `offers`/`priceSpecification`** and always reference the Organization by `@id`.
+- **Rank Math:** hooks `rank_math/json_ld` (priority 99) to remove Rank Math's knowledge-graph `publisher` node (so exactly one Organization is emitted), drop orphaned ImageObject nodes, and set `WebSite.name` to the Organization name (the previous name becomes an `alternateName`). Requires `org_name` to be set; otherwise Rank Math output is untouched.
